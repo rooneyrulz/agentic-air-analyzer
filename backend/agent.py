@@ -8,7 +8,7 @@ from langchain.callbacks.base import BaseCallbackHandler
 
 from tools.analysis_tool import DataAnalysisTool
 
-llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 
 tools = [DataAnalysisTool()]
 
@@ -23,44 +23,38 @@ prompt = ChatPromptTemplate.from_messages([
         - Metrics: CO2 levels, temperature, humidity, timestamps
         - Note: Column names may vary between files (co2 vs CO2 vs CO2 (PPM))
 
-        Response Format Guidelines:
-        1. For tabular data: Always format as a proper table with headers
-        2. For trends: Provide both numerical data AND descriptive insights
-        3. For comparisons: Use clear comparative language
-        4. Include relevant statistics (averages, ranges, etc.)
-        5. When appropriate, suggest chart visualizations
+        **IMPORTANT: When using the data_analysis_tool, you MUST provide input in EXACTLY this format:**
+        {{"input": "<ACTUAL_JSON_PARAMETERS>"}}
 
-        Note: Always provide a summary of the analysis, even if it's just a few sentences.
+        Where <ACTUAL_JSON_PARAMETERS> is a string containing:
+        {{
+            "operation": "analyze|load|chart",
+            "rooms": ["room_a", "room_b", "room_c"] or "all",
+            "metrics": ["temperature", "co2", "humidity"],
+            "group_by": "hour|day|week|room",
+            "filter": {{"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}},
+            "chart_type": "line|bar|scatter|heatmap"
+        }}
 
-        Always use the data_analysis_tool to access and analyze the actual data files.
+        **Correct Examples:**
+        1. For hourly analysis:
+        {{"input": "{{\\"operation\\":\\"analyze\\",\\"rooms\\":\\"all\\",\\"metrics\\":[\\"co2\\"],\\"group_by\\":\\"hour\\"}}"}}
 
-        Example Response Templates:
+        2. For room comparison:
+        {{"input": "{{\\"operation\\":\\"analyze\\",\\"rooms\\":[\\"room_a\\",\\"room_b\\"],\\"metrics\\":[\\"temperature\\",\\"humidity\\"],\\"group_by\\":\\"room\\"}}"}}
 
-        For hourly analysis:
-        | Hour | Temperature (°C) | CO2 (PPM) |
-        |------|------------------|-----------|
-        | 00:00| 22.1            | 420       |
-        | 01:00| 21.8            | 410       |
-
-        Analysis: "Temperature shows a decreasing trend from midnight to 6 AM, with the lowest reading of 19.2°C at 6 AM."
-
-        For room comparisons:
-        | Room | Avg Temperature | Avg CO2 | Humidity Range |
-        |------|----------------|---------|----------------|
-        | A    | 23.5°C         | 450 PPM | 45-65%         |
-        | B    | 22.1°C         | 380 PPM | 40-60%         |
-
-        Analysis: "Room A consistently runs warmer and has higher CO2 levels, suggesting higher occupancy or less ventilation."
-
+        **Response Guidelines:**
+        - Always return a clear summary
+        - Use Markdown tables for data
+        - Include statistics (averages, ranges)
+        - Suggest visualization types
+        - Explain patterns in natural language
         """
     ),
-    (
-        "user",
-        "{input}"
-    ),
+    ("user", "{input}"),
     MessagesPlaceholder(variable_name="agent_scratchpad")
 ])
 
 agent = create_tool_calling_agent(llm, tools, prompt)
 # agent = create_openai_functions_agent(llm, tools, prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)

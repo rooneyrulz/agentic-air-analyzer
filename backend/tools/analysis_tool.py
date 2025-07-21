@@ -4,25 +4,30 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 from langchain.tools import BaseTool
 
-
 class DataAnalysisToolInput(BaseModel):
-    input_str: str
+    # Change from input_str to just input (what the agent naturally sends)
+    input: str = Field(..., description="Analysis parameters as JSON string")
+    
+    # Add this to handle the field name mismatch
+    @classmethod
+    def alias_input_str(cls, v):
+        return {'input': v}
 
 class DataAnalysisTool(BaseTool):
     args_schema = DataAnalysisToolInput
     name: str = "data_analysis_tool"
     description: str = """
-    Analyze air quality data from NDJSON files. This tool can:
-    - Load and parse NDJSON files from data folder
-    - Handle different column naming conventions (co2, CO2, CO2 (PPM), etc.)
-    - Perform statistical analysis, grouping, filtering
-    - Generate charts and tables
-    - Handle time-based analysis (hourly, daily, weekly patterns)
+    Analyzes air quality data from NDJSON files. 
     
-    Input should be a JSON string with analysis parameters:
+    REQUIRED INPUT FORMAT:
+    ```json
+    {"input": "ACTUAL_JSON_PARAMETERS"}
+    ```
+    
+    Where ACTUAL_JSON_PARAMETERS is a string containing:
     {
         "operation": "analyze|load|chart",
         "rooms": ["room_a", "room_b", "room_c"] or "all",
@@ -31,6 +36,13 @@ class DataAnalysisTool(BaseTool):
         "filter": {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"},
         "chart_type": "line|bar|scatter|heatmap"
     }
+
+    Capabilities:
+    - Loads and analyzes NDJSON data files
+    - Handles varying column naming conventions
+    - Performs statistical analysis and grouping
+    - Generates visualization-ready data
+    - Supports time-based analysis (hourly/daily trends)
     """
     _data_folder: str = PrivateAttr(default="data")
     _column_mappings: dict = PrivateAttr(default_factory=lambda: {
@@ -44,24 +56,36 @@ class DataAnalysisTool(BaseTool):
         super().__init__(**kwargs)
         # PrivateAttrs are set automatically
 
-    def _run(self, input_str: str = '', input: str = '') -> str:
-        # Accept both input_str and input for compatibility
-        if not input_str and input:
-            input_str = input
-        if not input_str:
-            return "Error: No input provided to data_analysis_tool"
+    def _run(self, input: str) -> str:  # Change parameter name to match schema
         try:
-            params = json.loads(input_str)
+            # First try to parse as JSON
+            try:
+                params = json.loads(input)
+            except json.JSONDecodeError:
+                # If not JSON, convert natural language to params
+                params = {
+                    "operation": "analyze",
+                    "rooms": "all",
+                    "metrics": ["temperature", "co2", "humidity"],
+                    "group_by": "room"
+                }
+                if 'hour' in input.lower():
+                    params["group_by"] = "hour"
+                elif 'day' in input.lower():
+                    params["group_by"] = "day_of_week"
+                    
+            # Rest of your existing processing...
             operation = params.get('operation', 'analyze')
             if operation == 'load':
                 return self._load_data_info()
             elif operation == 'analyze':
                 result = self._analyze_data(params)
-                return result if result is not None else f"Error: unable to analyze data" 
+                return result if result is not None else "Error: unable to analyze data"
             elif operation == 'chart':
                 return self._create_chart(params)
             else:
                 return "Unknown operation. Use 'load', 'analyze', or 'chart'."
+
         except Exception as e:
             return f"Error: {str(e)}"
 
