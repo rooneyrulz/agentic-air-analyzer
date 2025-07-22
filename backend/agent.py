@@ -1,3 +1,4 @@
+import os
 from langchain.agents import Tool, AgentExecutor, create_openai_functions_agent, create_tool_calling_agent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 # from langchain_openai import ChatOpenAI
